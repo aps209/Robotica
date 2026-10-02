@@ -1,0 +1,13 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{\numberline {1}Alcance y método}{2}{section.1}%
+\contentsline {section}{\numberline {2}Bloque 2: SLAM y navegación autónoma}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Objetivo y flujo de datos}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Interfaces que se deben verificar}{2}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Interpretación TF y resultado}{3}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Bloque 3: odometría LiDAR--inercial}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Objetivo y flujo de datos}{3}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Interpretación TF y evaluación}{4}{subsection.3.2}%
+\contentsline {section}{\numberline {4}Bloque 4: manipulación con MoveIt 2}{4}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Objetivo y flujo de datos}{4}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Interpretación TF y resultado}{5}{subsection.4.2}%
+\contentsline {section}{\numberline {5}Scripts opcionales y conclusiones}{5}{section.5}%

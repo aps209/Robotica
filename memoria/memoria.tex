@@ -1,0 +1,143 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[spanish]{babel}
+\usepackage{fontspec}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{array,longtable}
+\usepackage[colorlinks=true,urlcolor=blue,linkcolor=black]{hyperref}
+\geometry{margin=2.3cm}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\newcommand{\pendiente}[1]{\par\noindent\fbox{\parbox{0.92\linewidth}{\textbf{Pendiente de evidencia experimental:} #1}}\par}
+\newcommand{\evidencia}[2]{%
+  \IfFileExists{#1}{\begin{center}\includegraphics[width=.9\linewidth,height=.48\textheight,keepaspectratio]{#1}\\\small #2\end{center}}%
+  {\pendiente{#2. Archivo esperado: \path{#1}.}}}
+\newcommand{\ruta}{\texttt{~/ros2\_ws}}
+
+\title{Robótica Inteligente: Práctica I\\\large Memoria técnica de ROS 2, Nav2, RKO-LIO y MoveIt 2}
+\author{Equipo: \underline{\hspace{7cm}}\\ Integrantes: \underline{\hspace{6.3cm}}}
+\date{Curso 2026--2027}
+
+\begin{document}
+\emergencystretch=2em
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Alcance y método}
+La práctica utiliza ROS 2 Jazzy y Gazebo Harmonic. Los bloques 2, 3 y 4 requieren una inspección del grafo de nodos, interfaces y árbol TF durante la ejecución. Esta memoria recoge la arquitectura que se espera de cada sistema y reserva espacios explícitos para los resultados observados. Las rutas, nombres de nodos y frecuencias se contrastarán con las salidas guardadas en \ruta\texttt{/evidencias}; no se presentan como mediciones realizadas.
+
+Para cada fase se ejecuta \texttt{bash capturar\_interfaces.sh <etapa>}, se abre \texttt{ros2 run rqt\_graph rqt\_graph}, se guarda una captura \texttt{grafo.png} y se consulta \texttt{ros2 run tf2\_tools view\_frames}. Los archivos \texttt{nodos.txt}, \texttt{topicos.txt}, \texttt{servicios.txt}, \texttt{acciones.txt} y \texttt{nodos/*.txt} permiten completar las tablas sin depender únicamente de la imagen del grafo.
+
+\section{Bloque 2: SLAM y navegación autónoma}
+\subsection{Objetivo y flujo de datos}
+Gazebo simula el TurtleBot 4 y sus sensores; el puente \texttt{ros\_gz\_bridge} publica lecturas y reloj en ROS. En la fase SLAM, las mediciones láser y la odometría alimentan \texttt{slam\_toolbox}. Este nodo estima la transformación entre \texttt{map} y \texttt{odom} y publica un mapa de ocupación. Al recorrer el almacén con teleoperación, la geometría de pasillos y paredes se incorpora progresivamente. \texttt{map\_saver\_cli} serializa la cuadrícula y sus metadatos en \texttt{mapa\_laboratorio.pgm} y \texttt{mapa\_laboratorio.yaml}.
+
+En la fase de navegación se reinicia la simulación sin SLAM y se carga el mapa estático. \texttt{map\_server} publica \texttt{/map}. AMCL compara el láser con el mapa y estima \texttt{map} $\rightarrow$ \texttt{odom}; la pose inicial debe suministrarse con \emph{2D Pose Estimate}. Nav2 recibe una meta \texttt{NavigateToPose}, calcula una ruta global sobre el mapa de costes, genera órdenes de velocidad con su controlador y las envía al robot. Gazebo integra el movimiento; la nueva odometría y el láser cierran el lazo de realimentación.
+
+\begin{center}\small
+Gazebo/sensores $\rightarrow$ puente ROS $\rightarrow$ SLAM o AMCL $\rightarrow$ mapa y TF\\
+meta $\rightarrow$ BT Navigator $\rightarrow$ planificador $\rightarrow$ controlador $\rightarrow$ velocidad $\rightarrow$ Gazebo
+\end{center}
+
+\subsection{Interfaces que se deben verificar}
+\footnotesize
+\begin{longtable}{|p{.21\linewidth}|p{.24\linewidth}|p{.23\linewidth}|p{.18\linewidth}|}
+\hline Nodo o componente & Publica & Suscribe & Servicios / acciones \\ \hline
+\endhead
+Puente Gazebo--ROS & \texttt{/clock}, láser, odometría y estados según configuración & órdenes de velocidad y otros comandos & Comprobar en \texttt{node info} \\ \hline
+\texttt{slam\_toolbox} (fase A) & \texttt{/map}, \texttt{/map\_metadata}, TF de mapa & láser, odometría mediante TF & servicios de mapa/serialización; anotar nombres reales \\ \hline
+\texttt{map\_server} (fase B) & \texttt{/map} & mapa YAML & \texttt{load\_map} y \texttt{get\_map}, si aparecen \\ \hline
+\texttt{amcl} (fase B) & pose estimada, TF \texttt{map}$\rightarrow$\texttt{odom} & láser, mapa y pose inicial & \texttt{set\_initial\_pose}, según versión \\ \hline
+\texttt{planner\_server} & ruta planificada & mapa de costes y meta & acción \texttt{ComputePathToPose} \\ \hline
+\texttt{controller\_server} & velocidad del robot & ruta, odometría y obstáculos & acción \texttt{FollowPath} \\ \hline
+\texttt{bt\_navigator} & feedback de navegación & objetivo y estado del sistema & acción \texttt{NavigateToPose} \\ \hline
+\end{longtable}
+\normalsize
+Los nombres de tópicos pueden estar remapeados o bajo un espacio de nombres. La tabla describe funciones esperadas; los nombres exactos se completan con los ficheros de introspección de las dos fases.
+
+\evidencia{../ros2_ws/evidencias/bloque2_slam/grafo.png}{Grafo de nodos durante SLAM, con explicación de enlaces principales}
+\evidencia{../ros2_ws/evidencias/bloque2_slam/frames.pdf}{Árbol TF de la fase SLAM}
+\evidencia{../ros2_ws/evidencias/bloque2_nav/grafo.png}{Grafo de nodos durante navegación autónoma}
+\evidencia{../ros2_ws/evidencias/bloque2_nav/frames.pdf}{Árbol TF de la fase de navegación}
+\pendiente{Añadir una captura del mapa de ocupación construido; el mapa original se guarda como \texttt{mapa\_laboratorio.pgm} y \texttt{mapa\_laboratorio.yaml}.}
+
+\subsection{Interpretación TF y resultado}
+La cadena esperada es \texttt{map} $\rightarrow$ \texttt{odom} $\rightarrow$ \texttt{base\_link} $\rightarrow$ marcos de sensores. La primera transformación corrige la deriva global; la segunda procede de la odometría local; los marcos del láser y del cuerpo describen la geometría del robot. Hay que comprobar en \texttt{frames.pdf} autoridad, frecuencia, edad y ausencia de saltos o árboles desconectados. En SLAM, el publicador de \texttt{map}$\rightarrow$\texttt{odom} es el estimador; durante navegación con mapa es AMCL.
+
+\pendiente{Añadir la cobertura del mapa, resolución y origen del YAML, una meta alcanzada y una incidencia observada. Comparar la ruta calculada con el movimiento real de Gazebo.}
+
+\section{Bloque 3: odometría LiDAR--inercial}
+\subsection{Objetivo y flujo de datos}
+El \emph{rosbag} Oxford Spires reproduce marcas de tiempo, nubes LiDAR e IMU. \texttt{rko\_lio} combina la predicción inercial entre escaneos con el ajuste geométrico de puntos frente al mapa local. La salida es una pose/odometría y una nube acumulada. \texttt{/clock} del reproductor es imprescindible para que los nodos con \texttt{use\_sim\_time:=true} usen el mismo tiempo que los mensajes registrados. RViz muestra la trayectoria y la reconstrucción; no interviene en la estimación.
+
+\begin{center}\small
+rosbag (LiDAR + IMU + reloj) $\rightarrow$ RKO-LIO $\rightarrow$ odometría + mapa de puntos $\rightarrow$ RViz
+\end{center}
+
+\footnotesize
+\begin{longtable}{|p{.21\linewidth}|p{.24\linewidth}|p{.23\linewidth}|p{.18\linewidth}|}
+\hline Nodo o componente & Publica & Suscribe & Servicios / acciones \\ \hline
+\endhead
+\texttt{rosbag2\_player} & \texttt{/clock}, nube LiDAR, IMU e imágenes & --- & controles de reproducción; verificar \\ \hline
+\texttt{rko\_lio} & pose/odometría, TF y nube reconstruida & LiDAR e IMU de la configuración & parámetros de calibración y filtros; verificar \\ \hline
+RViz2 & visualización y posibles marcadores & odometría, TF y nubes & servicios internos; verificar \\ \hline
+\end{longtable}
+\normalsize
+Los tópicos del bag dependen de \texttt{oxford\_spires.yaml}. Se registrarán los nombres y tipos reales con \texttt{ros2 bag info}, \texttt{ros2 topic list -t} y \texttt{ros2 node info}.
+
+\evidencia{../ros2_ws/evidencias/bloque3/grafo.png}{Grafo del reproductor, RKO-LIO y RViz2}
+\evidencia{../ros2_ws/evidencias/bloque3/frames.pdf}{Árbol TF al procesar Oxford Spires}
+\evidencia{../ros2_ws/evidencias/bloque3/resultado.png}{Reconstrucción y trayectoria observadas en RViz2}
+
+\subsection{Interpretación TF y evaluación}
+Se distinguirá el marco fijo de odometría del marco del LiDAR y de la IMU. Las transformaciones extrínsecas sensor--cuerpo deben ser coherentes con el archivo YAML; las poses cambiantes representan el movimiento estimado. El PDF TF permite comprobar conectividad y qué nodo publica cada relación. Un desajuste temporal entre IMU y LiDAR puede producir saltos, pérdida de escaneos o un mapa borroso; conviene registrar los avisos y la tasa de mensajes, además de una captura del resultado.
+
+\pendiente{Indicar duración y tamaño del bag, tópicos exactos, fragmento procesado, avisos de consola y valoración visual de la deriva o nitidez. No atribuir valores numéricos sin medición.}
+
+\section{Bloque 4: manipulación con MoveIt 2}
+\subsection{Objetivo y flujo de datos}
+El UR3e simulado tiene seis articulaciones. RViz o el cliente Python envían una pose objetivo del eslabón final a la acción de \texttt{move\_group}. MoveIt resuelve la cinemática inversa, comprueba límites y colisiones, y OMPL calcula una trayectoria. \texttt{ros2\_control} recibe puntos articulares mediante un controlador de trayectoria; Gazebo actualiza las articulaciones y publica \texttt{/joint\_states}. \texttt{robot\_state\_publisher} transforma dichos estados en TF para que el robot visible coincida con el estado simulado.
+
+\begin{center}\small
+pose objetivo $\rightarrow$ MoveIt/planificación $\rightarrow$ trayectoria articular $\rightarrow$ controlador $\rightarrow$ Gazebo\\
+Gazebo $\rightarrow$ estados articulares $\rightarrow$ TF y escena de planificación
+\end{center}
+
+\footnotesize
+\begin{longtable}{|p{.21\linewidth}|p{.24\linewidth}|p{.23\linewidth}|p{.18\linewidth}|}
+\hline Nodo o componente & Publica & Suscribe & Servicios / acciones \\ \hline
+\endhead
+\texttt{move\_group} & trayectoria prevista y estado de planificación & \texttt{/joint\_states}, escena y objetivos & \texttt{/move\_action}, \texttt{/execute\_}\newline\texttt{trajectory} \\ \hline
+Controlador de trayectoria & estado del controlador & trayectoria articular & acción \texttt{FollowJoint}\newline\texttt{Trajectory} \\ \hline
+\texttt{robot\_state\_}\newline\texttt{publisher} & \texttt{/tf}, \texttt{/tf\_static} & \texttt{/joint\_states} & parámetros del modelo URDF \\ \hline
+Gazebo + puente & estados articulares & comandos del controlador & comprobar interfaces reales \\ \hline
+RViz2 & meta interactiva & estado, TF y escena & cliente de \texttt{/move\_action} \\ \hline
+\end{longtable}
+\normalsize
+
+\evidencia{../ros2_ws/evidencias/bloque4/grafo.png}{Grafo de MoveIt, controlador, robot y RViz2}
+\evidencia{../ros2_ws/evidencias/bloque4/frames.pdf}{Árbol TF del UR3e}
+\evidencia{../ros2_ws/evidencias/bloque4/resultado.png}{Brazo en la pose ejecutada en Gazebo y RViz2}
+
+\subsection{Interpretación TF y resultado}
+El árbol debe encadenar \texttt{base\_link}, los eslabones de hombro, codo y muñeca, y \texttt{tool0}; los nombres concretos se confirman con \texttt{frames.pdf}. La pose de \texttt{tool0} se obtiene componiendo las transformaciones de cada articulación. La meta naranja en RViz representa una configuración deseada; solo cuando la trayectoria se ejecuta y los estados articulares cambian debe afirmarse que Gazebo movió el brazo.
+
+\pendiente{Registrar una pose alcanzable (marco, posición, cuaternión), estado de la acción MoveGroup, duración y comparación visual entre pose deseada y ejecutada. Anotar una meta imposible o con colisión y el error observado.}
+
+\section{Scripts opcionales y conclusiones}
+\texttt{enviar\_meta\_nav.py} crea una meta \texttt{NavigateToPose} en el marco \texttt{map} a partir de $(x,y,\theta)$. \texttt{enviar\_pose\_ur.py} manda a \texttt{MoveGroup} una región de posición y orientación para \texttt{tool0}; admite \texttt{--plan-only}. Ambos clientes comprueban si la acción está disponible, la aceptación de la meta y el resultado. Se ejecutan después de arrancar sus respectivos sistemas.
+
+\pendiente{Incluir el comando exacto y la salida de cada script, y concluir qué se aprendió sobre nodos, acciones y TF a partir de las observaciones reales.}
+
+\section*{Fuentes}
+\footnotesize\sloppy
+\begin{itemize}
+\item Guion de la práctica, \emph{Robótica Inteligente: Práctica I}, Universidad de Alicante, 2026--2027.
+\item \url{https://docs.ros.org/en/jazzy/index.html}
+\item \url{https://turtlebot.github.io/turtlebot4-user-manual/software/turtlebot4_simulator.html}
+\item \url{https://github.com/UniversalRobots/Universal_Robots_ROS2_GZ_Simulation}
+\item \url{https://docs.ros.org/en/ros2_packages/jazzy/api/rko_lio/index.html}
+\end{itemize}
+\normalsize
+\end{document}
